@@ -10,19 +10,57 @@ from sklearn.model_selection import train_test_split
 from sklearn.datasets import  make_classification
 
 import time
+import gc
 
-def lgb_train(random_state):
+def lgb_train(random_state, saving, logging):
     print('Loading data...')
 
     # 讀檔
     # train = pd.read_csv('dataset-0510/train.csv')
-    train = pd.read_csv('FE_train.csv')
+    train = pd.read_csv('dataset-0510/train.csv')
+    test = pd.read_csv('dataset-0510/test.csv')
     del train['building_id']
 
-    # 設定ignored list(cus training dataset can not be zero or NaN) without Feature Enginnearing
-    # FE later
-    # ignored = ['parking_price', 'parking_area', 'txn_floor', 'village_income_median', 'building_id']
-    # train = train.drop(columns=ignored)
+    # print(train.shape, test.shape)
+
+    # Feature Engineering
+    print('Start Feature Engineering...')
+    target_df = train.groupby(['city', 'town']).agg({'building_area' : ['mean', 'median'], 'land_area' : ['mean', 'median'], 'total_price' : ['mean', 'median']}).reset_index()
+    target_df.columns = [i[0] + '_' + i[1]  if i[1] != '' else i[0] for i in target_df.columns.tolist()]
+    target_df['price_land_rate_median'] = target_df['total_price_median'] / target_df['land_area_median']
+    target_df['price_building_rate_median'] = target_df['total_price_median'] / target_df['building_area_median']
+    target_df['price_land_rate_mean'] = target_df['total_price_mean'] / target_df['land_area_mean']
+    target_df['price_building_rate_mean'] = target_df['total_price_mean'] / target_df['building_area_mean']
+
+    combine_cols = ['city', 'town', 'price_land_rate_median', 'price_building_rate_median', 'price_land_rate_mean', 'price_building_rate_mean']
+    train = pd.merge(train, target_df[combine_cols], on =['city', 'town'], how='left')
+    test = pd.merge(test, target_df[combine_cols], on =['city', 'town'], how='left')
+
+    train.loc[train['building_area'] == 4, 'parking_area'] = train.loc[train['building_area'] == 4, 'building_area'] / train.loc[train['building_area'] == 4, 'total_floor']
+    test.loc[train['building_area'] == 4, 'parking_area'] = test.loc[test['building_area'] == 4, 'building_area'] / test.loc[test['building_area'] == 4, 'total_floor']
+    drop_cols = [i for i in train.columns if np.sum(train[i]) == 60000 and 'index' in i]
+    train.drop(drop_cols, axis = 1, inplace = True)
+    test.drop(drop_cols, axis = 1, inplace = True)
+
+    # target_df = train.groupby(['city', 'town']).agg({'building_area' : ['mean', 'median'], 'land_area' : ['mean', 'median'], 'total_price' : ['mean', 'median']}).reset_index()
+    # target_df.columns = [i[0] + '_' + i[1]  if i[1] != '' else i[0] for i in target_df.columns.tolist()]
+    # target_df['price_land_rate_median'] = np.log1p(target_df['total_price_median']) / target_df['land_area_median']
+    # target_df['price_building_rate_median'] = np.log1p(target_df['total_price_median']) / target_df['building_area_median']
+    # target_df['price_land_rate_mean'] = np.log1p(target_df['total_price_mean']) / target_df['land_area_mean']
+    # target_df['price_building_rate_mean'] = np.log1p(target_df['total_price_mean']) / target_df['building_area_mean']
+
+    # combine_cols = ['city', 'town', 'price_land_rate_median', 'price_building_rate_median', 'price_land_rate_mean', 'price_building_rate_mean']
+    # train = pd.merge(train, target_df[combine_cols], on =['city', 'town'], how='left')
+    # test = pd.merge(test, target_df[combine_cols], on =['city', 'town'], how='left')
+
+    # train.loc[train['building_area'] == 4, 'parking_area'] = train.loc[train['building_area'] == 4, 'building_area'] / train.loc[train['building_area'] == 4, 'total_floor']
+    # test.loc[train['building_area'] == 4, 'parking_area'] = test.loc[test['building_area'] == 4, 'building_area'] / test.loc[test['building_area'] == 4, 'total_floor']
+    # drop_cols = [i for i in train.columns if np.sum(train[i]) == 60000 and 'index' in i]
+    # train.drop(drop_cols, axis = 1, inplace = True)
+    # test.drop(drop_cols, axis = 1, inplace = True)
+
+    # print(train.shape, test.shape)
+    # return
 
     # 對目標欄位進行處理(cus price range too large)
     train['total_price'] = np.log1p(train['total_price'])
@@ -55,8 +93,6 @@ def lgb_train(random_state):
         hit_error = np.sum(scores)/train_data.num_data()
         return 'hit_error', hit_error, False
 
-    print('Start training...')
-
     # Model參數
     params = {
         'task': 'train',
@@ -65,7 +101,7 @@ def lgb_train(random_state):
         'metric': "None",
         'num_leaves': 31,
         # 'max_bin': 512,
-        'learning_rate': 0.05,
+        'learning_rate': 0.025,
         # 'min_data_in_leaf': 100,
         'feature_fraction': 0.9,
         'bagging_fraction': 0.7,
@@ -74,19 +110,34 @@ def lgb_train(random_state):
         'num_threads': -1,
     }
 
+    categorical_feature = ['building_material', 'building_type', 'building_use',
+     'parking_way', 'parking_way']
+
+    feature_name = [i for i in train.columns]
+
     # CV and training
+
+    # print('Loading previous model...')
+    # bst = lgb.Booster(model_file='model.txt')
+
+    print('Start training...')
 
     start_time = time.time()
 
     gbm = lgb.train(
         params, 
-        lgb_train, 
-        num_boost_round=10000, 
+        lgb_train,
+        num_boost_round=1000, 
         valid_sets=[lgb_eval_1, lgb_eval_2], 
-        early_stopping_rounds=1000,
+        early_stopping_rounds=100,
         feval=lambda preds, train_data: [c_hit(preds, train_data)],
         verbose_eval=100,
+        # init_model=bst,
+        # feature_name=feature_name,
+        # categorical_feature=categorical_feature,
     )
+
+
 
     # print('Saving model...')
     # gbm.save_model('model.txt')
@@ -107,27 +158,34 @@ def lgb_train(random_state):
     hit = np.absolute((y_test - y_pred)/y_test)
     hit_rate = np.sum(hit < 0.1) / len(hit)
     MAPE = np.sum(hit)/len(hit)
+    score = hit_rate*(10**4) + (1 - MAPE)
 
     print('MAPE: ', MAPE)
     print('Hit Rate: ', hit_rate * 100,'%')
-    print('Score: ', hit_rate*(10**4) + (1 - MAPE))
+    print('Score: ', score)
     print('Training Time: ', end_time - start_time, 's')
 
     # 參數寫入log檔
-    # f = open('model_training_log.txt', 'a')
-    # log = '\nRandom state: ' + str(random_state) + ', Scores: ' + str(hit_rate*(10**4) + (1 - MAPE))
-    # f.write(log)
-    # f.close()
+    if logging:
+        f = open('model_training_log.txt', 'a')
+        log = '\nRandom state: ' + str(random_state) + ', Scores: ' + str(score) + ', ' + str(time.strftime("%Y/%m/%d %H:%M:%S", time.localtime()))
+        f.write(log)
+        f.close()
 
     # Create submission csv file
-    test = pd.read_csv('FE_test.csv')
-    names = test['building_id']
-    del test['building_id']
-    del test['total_price']
-    y_out = gbm.predict(test, num_iteration=gbm.best_iteration)
-    test['total_price'] = np.expm1(y_out)
-    test['building_id'] = names
-    file_name = 'output_' + str(time.strftime("%Y%m%d%H%M%S", time.localtime())) + '.csv'
-    test[['building_id', 'total_price']].to_csv(file_name, index=False)
+    if saving or score > 5750:
+        names = test['building_id']
+        del test['building_id']
+        # del test['total_price']
+        y_out = gbm.predict(test, num_iteration=gbm.best_iteration)
+        test['total_price'] = np.expm1(y_out)
+        test['building_id'] = names
+        file_name = 'output_' + str(time.strftime("%Y%m%d%H%M%S", time.localtime())) + '.csv'
+        directory = 'Submission/'
+        test[['building_id', 'total_price']].to_csv(directory + file_name, index=False)
 
-lgb_train(11)
+lgb_train(random_state=31, saving=False, logging=False)
+
+# testing block
+# for i in range(1, 101):
+#     lgb_train(random_state=i, saving=False, logging=True)
