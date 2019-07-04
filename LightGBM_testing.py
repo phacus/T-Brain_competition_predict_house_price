@@ -17,50 +17,35 @@ def lgb_train(random_state, saving, logging):
 
     # 讀檔
     # train = pd.read_csv('dataset-0510/train.csv')
-    train = pd.read_csv('dataset-0510/train.csv')
-    test = pd.read_csv('dataset-0510/test.csv')
+    train = pd.read_csv('FE_train.csv')
+    test = pd.read_csv('FE_test.csv')
     del train['building_id']
-
-    # print(train.shape, test.shape)
 
     # Feature Engineering
     print('Start Feature Engineering...')
-    # target_df = train.groupby(['lat', 'lon']).agg({'building_area' : ['mean', 'median'], 'land_area' : ['mean', 'median'], 'total_price' : ['mean', 'median']}).reset_index()
-    # target_df.columns = [i[0] + '_' + i[1]  if i[1] != '' else i[0] for i in target_df.columns.tolist()]
-    # target_df['price_land_rate_median'] = target_df['total_price_median'] / target_df['land_area_median']
-    # target_df['price_building_rate_median'] = target_df['total_price_median'] / target_df['building_area_median']
-    # target_df['price_land_rate_mean'] = target_df['total_price_mean'] / target_df['land_area_mean']
-    # target_df['price_building_rate_mean'] = target_df['total_price_mean'] / target_df['building_area_mean']
+    target_df = train.groupby(['city', 'town']).agg({'building_area' : ['mean', 'median'], 'land_area' : ['mean', 'median'], 'total_price' : ['mean', 'median']}).reset_index()
+    target_df.columns = [i[0] + '_' + i[1]  if i[1] != '' else i[0] for i in target_df.columns.tolist()]
+    target_df['price_land_rate_median'] = np.log1p(target_df['total_price_median']) / target_df['land_area_median']
+    target_df['price_building_rate_median'] = np.log1p(target_df['total_price_median']) / target_df['building_area_median']
+    target_df['price_land_rate_mean'] = np.log1p(target_df['total_price_mean']) / target_df['land_area_mean']
+    target_df['price_building_rate_mean'] = np.log1p(target_df['total_price_mean']) / target_df['building_area_mean']
 
-    # combine_cols = ['lat', 'lon', 'price_land_rate_median', 'price_building_rate_median', 'price_land_rate_mean', 'price_building_rate_mean']
-    # train = pd.merge(train, target_df[combine_cols], on =['lat', 'lon'], how='left')
-    # test = pd.merge(test, target_df[combine_cols], on =['lat', 'lon'], how='left')
+    combine_cols = ['city', 'town', 'price_land_rate_median', 'price_building_rate_median', 'price_land_rate_mean', 'price_building_rate_mean']
+    train = pd.merge(train, target_df[combine_cols], on =['city', 'town'], how='left')
+    test = pd.merge(test, target_df[combine_cols], on =['city', 'town'], how='left')
 
-    # train.loc[train['building_area'] == 4, 'parking_area'] = train.loc[train['building_area'] == 4, 'building_area'] / train.loc[train['building_area'] == 4, 'total_floor']
-    # test.loc[train['building_area'] == 4, 'parking_area'] = test.loc[test['building_area'] == 4, 'building_area'] / test.loc[test['building_area'] == 4, 'total_floor']
-    # drop_cols = [i for i in train.columns if np.sum(train[i]) == 60000 and 'index' in i]
-    # train.drop(drop_cols, axis = 1, inplace = True)
-    # test.drop(drop_cols, axis = 1, inplace = True)
+    train.loc[train['building_area'] == 4, 'parking_area'] = train.loc[train['building_area'] == 4, 'building_area'] / train.loc[train['building_area'] == 4, 'total_floor']
+    test.loc[train['building_area'] == 4, 'parking_area'] = test.loc[test['building_area'] == 4, 'building_area'] / test.loc[test['building_area'] == 4, 'total_floor']
+    drop_cols = [i for i in train.columns if np.sum(train[i]) == 60000 and 'index' in i]
 
-    # target_df = train.groupby(['city', 'town']).agg({'building_area' : ['mean', 'median'], 'land_area' : ['mean', 'median'], 'total_price' : ['mean', 'median']}).reset_index()
-    # target_df.columns = [i[0] + '_' + i[1]  if i[1] != '' else i[0] for i in target_df.columns.tolist()]
-    # target_df['price_land_rate_median'] = np.log1p(target_df['total_price_median']) / target_df['land_area_median']
-    # target_df['price_building_rate_median'] = np.log1p(target_df['total_price_median']) / target_df['building_area_median']
-    # target_df['price_land_rate_mean'] = np.log1p(target_df['total_price_mean']) / target_df['land_area_mean']
-    # target_df['price_building_rate_mean'] = np.log1p(target_df['total_price_mean']) / target_df['building_area_mean']
+    train.drop(['town'], axis = 1, inplace = True)
+    test.drop(['town'], axis = 1, inplace = True)
+    train.drop(drop_cols, axis = 1, inplace = True)
+    test.drop(drop_cols, axis = 1, inplace = True)
+    gc.collect()
 
-    # combine_cols = ['city', 'town', 'price_land_rate_median', 'price_building_rate_median', 'price_land_rate_mean', 'price_building_rate_mean']
-    # train = pd.merge(train, target_df[combine_cols], on =['city', 'town'], how='left')
-    # test = pd.merge(test, target_df[combine_cols], on =['city', 'town'], how='left')
-
-    # train.loc[train['building_area'] == 4, 'parking_area'] = train.loc[train['building_area'] == 4, 'building_area'] / train.loc[train['building_area'] == 4, 'total_floor']
-    # test.loc[train['building_area'] == 4, 'parking_area'] = test.loc[test['building_area'] == 4, 'building_area'] / test.loc[test['building_area'] == 4, 'total_floor']
-    # drop_cols = [i for i in train.columns if np.sum(train[i]) == 60000 and 'index' in i]
-    # train.drop(drop_cols, axis = 1, inplace = True)
-    # test.drop(drop_cols, axis = 1, inplace = True)
-
-    # print(train.shape, test.shape)
-    # return
+    print(train.shape, test.shape)
+    del test['total_price']
 
     # 對目標欄位進行處理(cus price range too large)
     train['total_price'] = np.log1p(train['total_price'])
@@ -185,7 +170,3 @@ def lgb_train(random_state, saving, logging):
         test[['building_id', 'total_price']].to_csv(directory + file_name, index=False)
 
 lgb_train(random_state=31, saving=False, logging=False)
-
-# testing block
-# for i in range(1, 101):
-#     lgb_train(random_state=i, saving=False, logging=True)
