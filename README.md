@@ -20,4 +20,9 @@
 
 *Final private leaderboard:* ***31/766***
 ![ladder](./img/ladder.png)
-分數計算 (hit-rate score) 可參考 [比賽網站](https://tbrain.trendmicro.com.tw/Competitions/Details/6)
+
+分數計算 ( hit-rate score ) 可參考 [比賽網站](https://tbrain.trendmicro.com.tw/Competitions/Details/6)
+
+## Documentation
+
+請參考doc資料夾 ( 閃電講ppt , 攤位海報 )
